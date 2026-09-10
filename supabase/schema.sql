@@ -24,7 +24,7 @@ create table if not exists public.diary_entries (
   ieta text,
   oboeta text,
   sorted boolean not null default false,
-  created_by uuid not null default auth.uid() references auth.users (id) on delete set default,
+  created_by uuid default auth.uid() references auth.users (id) on delete set null,
   created_at timestamptz not null default now()
 );
 
