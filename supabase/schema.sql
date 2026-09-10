@@ -9,7 +9,7 @@ create table if not exists public.diary_members (
 );
 
 insert into public.diary_members (email)
-values ('satotakamitsu63@gmail.com')
+values ('ragubiiii@gmail.com')
 on conflict (email) do nothing;
 
 -- 妻を追加するときは、下の行のメールアドレスを書き換えて実行する。
