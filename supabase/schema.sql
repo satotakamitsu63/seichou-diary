@@ -9,10 +9,11 @@ create table if not exists public.diary_members (
 );
 
 insert into public.diary_members (email)
-values ('ragubiiii@gmail.com')
+values ('ragubiiiii@gmail.com')
 on conflict (email) do nothing;
 
--- 妻を追加するときは、下の行のメールアドレスを書き換えて実行する。
+-- 家族が増えるときは合言葉から自分で登録できる（このファイルの末尾を参照）。
+-- 手で追加したいときは、下の行のメールアドレスを書き換えて実行する。
 -- insert into public.diary_members (email) values ('wife@example.com') on conflict do nothing;
 
 create table if not exists public.diary_entries (
