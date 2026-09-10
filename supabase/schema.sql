@@ -59,3 +59,43 @@ create policy diary_entries_all on public.diary_entries
   for all to authenticated
   using (public.is_diary_member())
   with check (public.is_diary_member());
+
+-- 家族の合言葉。これを知っている人はアプリから自分で登録できる。
+create table if not exists public.diary_invite (
+  code text primary key
+);
+
+-- ポリシーを作らないので、誰も直接は読めない。下の関数の中だけで参照される。
+alter table public.diary_invite enable row level security;
+
+insert into public.diary_invite (code)
+values ('JUNHIKA')
+on conflict (code) do nothing;
+
+create or replace function public.join_diary(invite_code text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  caller_email text := auth.jwt() ->> 'email';
+begin
+  if caller_email is null then
+    return false;
+  end if;
+
+  if not exists (select 1 from public.diary_invite i where i.code = invite_code) then
+    return false;
+  end if;
+
+  insert into public.diary_members (email)
+  values (caller_email)
+  on conflict (email) do nothing;
+
+  return true;
+end;
+$$;
+
+revoke all on function public.join_diary(text) from public, anon;
+grant execute on function public.join_diary(text) to authenticated;

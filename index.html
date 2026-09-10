@@ -300,8 +300,8 @@
 </header>
 
 <form class="card" id="login" hidden>
-  <div class="card-header">ログイン</div>
-  <p class="hint">最初の一回だけ。次からはこの端末で開くだけで使えます。</p>
+  <div class="card-header" id="login-title">ログイン</div>
+  <p class="hint" id="login-hint">最初の一回だけ。次からはこの端末で開くだけで使えます。</p>
   <label>
     <span class="label-text">メールアドレス</span>
     <input type="email" id="email" autocomplete="username" required>
@@ -311,6 +311,18 @@
     <input type="password" id="password" autocomplete="current-password" required>
   </label>
   <button class="primary-btn" id="login-btn" type="submit">ログイン</button>
+  <button class="text-btn" id="mode-toggle" type="button">はじめての人はこちら</button>
+</form>
+
+<form class="card" id="join" hidden>
+  <div class="card-header">合言葉</div>
+  <p class="hint">家族の合言葉を入れると、日記を読み書きできるようになります。</p>
+  <label>
+    <span class="label-text">合言葉</span>
+    <input type="text" id="code" autocapitalize="characters" autocomplete="off" required>
+  </label>
+  <button class="primary-btn" id="join-btn" type="submit">送信する</button>
+  <button class="text-btn" id="join-logout" type="button">別のアカウントでログインする</button>
 </form>
 
 <main id="app" hidden>
@@ -345,37 +357,101 @@ const el = (id) => document.getElementById(id);
 const CHILD_MARK = { '純': 'jun', '光': 'hikaru' };
 
 let recognition = null;
+let signingUp = false;
 
 // ── Session ───────────────────────────────────────────
+el('meta').textContent = new Date().toLocaleDateString('ja-JP',
+  { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+
 const { data: { session } } = await supabase.auth.getSession();
-showScreen(session);
+await showScreen(session);
 
-supabase.auth.onAuthStateChange((_event, next) => showScreen(next));
+supabase.auth.onAuthStateChange((_event, next) => { showScreen(next); });
 
-function showScreen(session) {
-  const signedIn = Boolean(session);
-  el('login').hidden = signedIn;
-  el('app').hidden = !signedIn;
-  el('meta').textContent = new Date().toLocaleDateString('ja-JP',
-    { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
-  if (signedIn) loadEntries();
+// 日記を読み書きできる人だけが diary_members を読めるので、
+// 1行でも返ってくるかどうかが、そのまま合言葉を通ったかどうかになる。
+async function isMember() {
+  const { data } = await supabase.from('diary_members').select('email').limit(1);
+  return Boolean(data && data.length);
 }
+
+async function showScreen(session) {
+  if (!session) {
+    el('login').hidden = false;
+    el('join').hidden = true;
+    el('app').hidden = true;
+    return;
+  }
+
+  const member = await isMember();
+  el('login').hidden = true;
+  el('join').hidden = member;
+  el('app').hidden = !member;
+  if (member) loadEntries();
+}
+
+el('mode-toggle').addEventListener('click', () => {
+  signingUp = !signingUp;
+  el('login-title').textContent = signingUp ? 'はじめて使う' : 'ログイン';
+  el('login-hint').textContent = signingUp
+    ? 'メールアドレスとパスワードを決めてください。このあと合言葉を聞きます。'
+    : '最初の一回だけ。次からはこの端末で開くだけで使えます。';
+  el('login-btn').textContent = signingUp ? '登録する' : 'ログイン';
+  el('mode-toggle').textContent = signingUp ? 'ログインに戻る' : 'はじめての人はこちら';
+  el('password').autocomplete = signingUp ? 'new-password' : 'current-password';
+});
 
 el('login').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = el('login-btn');
+  const label = btn.textContent;
   btn.disabled = true;
-  btn.textContent = 'ログインしています…';
+  btn.textContent = signingUp ? '登録しています…' : 'ログインしています…';
 
-  const { error } = await supabase.auth.signInWithPassword({
+  const credentials = {
     email: el('email').value.trim(),
     password: el('password').value
-  });
+  };
 
-  if (error) toast('メールアドレスかパスワードが違うようです');
+  const { error } = signingUp
+    ? await supabase.auth.signUp(credentials)
+    : await supabase.auth.signInWithPassword(credentials);
+
+  if (error) {
+    toast(signingUp
+      ? '登録できませんでした。パスワードは6文字以上にしてください'
+      : 'メールアドレスかパスワードが違うようです');
+  }
+
   el('password').value = '';
   btn.disabled = false;
-  btn.textContent = 'ログイン';
+  btn.textContent = label;
+});
+
+el('join').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = el('join-btn');
+  btn.disabled = true;
+  btn.textContent = '確認しています…';
+
+  const { data, error } = await supabase.rpc('join_diary', {
+    invite_code: el('code').value.trim().toUpperCase()
+  });
+
+  if (error || data !== true) {
+    toast('合言葉が違うようです');
+  } else {
+    el('code').value = '';
+    const { data: { session } } = await supabase.auth.getSession();
+    await showScreen(session);
+  }
+
+  btn.disabled = false;
+  btn.textContent = '送信する';
+});
+
+el('join-logout').addEventListener('click', async () => {
+  await supabase.auth.signOut();
 });
 
 el('logout').addEventListener('click', async () => {
