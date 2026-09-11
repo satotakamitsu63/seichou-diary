@@ -63,8 +63,9 @@ async function rest(token, path, options = {}) {
     }
   });
 
-  if (!res.ok) fail(`Supabaseへの要求が失敗しました (${res.status}): ${await res.text()}`);
-  return res.status === 204 ? null : res.json();
+  const body = await res.text();
+  if (!res.ok) fail(`Supabaseへの要求が失敗しました (${res.status}): ${body}`);
+  return body ? JSON.parse(body) : null;
 }
 
 async function list(token) {

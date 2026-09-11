@@ -540,7 +540,7 @@ function render(entries) {
         <span class="entry-date">${formatDate(e.entry_date)}</span>
         ${chip(e)}
       </div>
-      ${e.sorted ? '' : field('メモ', e.note)}
+      ${(e.sorted && (e.shita || e.ieta || e.oboeta)) ? '' : field('メモ', e.note)}
       ${field('したこと', e.shita)}
       ${field('できたこと', e.ieta)}
       ${field('覚えたこと', e.oboeta)}
