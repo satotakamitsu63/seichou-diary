@@ -104,6 +104,14 @@
 
   label { display: flex; flex-direction: column; gap: 6px; }
 
+  .date-row {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .date-row input { flex: 1; min-width: 0; }
+
   .label-text {
     font-size: 14px;
     font-weight: 500;
@@ -327,8 +335,12 @@
 
 <main id="app" hidden>
   <div class="card">
-    <div class="card-header">今日のできごと</div>
-    <p class="hint">思いついたまま書いて残してください。したこと・できたこと・覚えたことへの振り分けは、あとでまとめて整理します。</p>
+    <div class="card-header">できごと</div>
+    <p class="hint">思いついたまま書いて残してください。日付を変えれば、過去の日の分も登録できます。したこと・できたこと・覚えたことへの振り分けは、あとでまとめて整理します。</p>
+    <label class="date-row">
+      <span class="label-text">日付</span>
+      <input type="date" id="entry-date">
+    </label>
     <div class="input-row">
       <textarea id="note" placeholder="例：純と公園に行って砂遊び。すべり台を一人で登れた。帰り道で光が犬を見て「ワンワン」と言えた。"></textarea>
       <button class="mic-btn" id="mic" type="button" title="音声で入力する">🎤</button>
@@ -362,6 +374,9 @@ let signingUp = false;
 // ── Session ───────────────────────────────────────────
 el('meta').textContent = new Date().toLocaleDateString('ja-JP',
   { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+
+el('entry-date').value = todayKey();
+el('entry-date').max = todayKey();
 
 const { data: { session } } = await supabase.auth.getSession();
 await showScreen(session);
@@ -473,8 +488,10 @@ el('save').addEventListener('click', async () => {
   btn.disabled = true;
   btn.textContent = '保存しています…';
 
+  const entryDate = el('entry-date').value || todayKey();
+
   const { error } = await supabase.from('diary_entries').insert({
-    entry_date: todayKey(),
+    entry_date: entryDate,
     note
   });
 
@@ -482,7 +499,7 @@ el('save').addEventListener('click', async () => {
     toast('保存できませんでした。通信を確認してもう一度お試しください');
   } else {
     el('note').value = '';
-    toast('記録しました');
+    toast(entryDate === todayKey() ? '記録しました' : `${formatDate(entryDate)}の記録を保存しました`);
     loadEntries();
   }
 
