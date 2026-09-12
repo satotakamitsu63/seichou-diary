@@ -21,6 +21,7 @@
     --charcoal: #222222;
     --field: #ffffff;
     --line: #000000;
+    --alert: #9c2f21;
 
     /* Decorative only — child identity markers, never UI accents */
     --jun-mark: #e261e5;
@@ -263,6 +264,64 @@
     line-height: 1.6;
   }
 
+  .delete-btn {
+    align-self: flex-start;
+    background: none;
+    border: none;
+    padding: 4px 0;
+    font-family: var(--sans);
+    font-size: 14px;
+    letter-spacing: -0.02em;
+    color: var(--slate);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .confirm {
+    background: var(--field);
+    border: 1px solid var(--alert);
+    border-radius: 24px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .confirm-title {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--alert);
+  }
+
+  .confirm-buttons {
+    display: flex;
+    gap: 12px;
+  }
+
+  .confirm-buttons button {
+    flex: 1;
+    padding: 14px 20px;
+    border-radius: 1440px;
+    font-family: var(--sans);
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    cursor: pointer;
+  }
+
+  .danger-btn {
+    border: none;
+    background: var(--alert);
+    color: #fff;
+  }
+
+  .cancel-btn {
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--ink);
+  }
+
   .empty {
     background: var(--meadow);
     border-radius: 24px;
@@ -365,6 +424,8 @@ const CHILD_MARK = { '純': 'jun', '光': 'hikaru' };
 
 let recognition = null;
 let signingUp = false;
+let entries = [];
+let pendingDeleteId = null;
 
 // ── Session ───────────────────────────────────────────
 el('meta').textContent = new Date().toLocaleDateString('ja-JP',
@@ -523,7 +584,9 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden && !el('app').hidden) loadEntries();
 });
 
-function render(entries) {
+function render(rows) {
+  entries = rows;
+
   if (entries.length === 0) {
     el('list').innerHTML = '<div class="empty">まだ記録がありません。今日のできごとから書いてみてください</div>';
     return;
@@ -536,9 +599,70 @@ function render(entries) {
         ${chip(e)}
       </div>
       <div class="entry-note">${esc(e.note)}</div>
+      ${e.id === pendingDeleteId ? confirmPanel(e) : `
+        <button class="delete-btn" type="button" data-action="ask" data-id="${e.id}">削除</button>
+      `}
     </article>
   `).join('');
 }
+
+// 消えた記録は戻らないので、本文を見せたうえで「削除」と打ってもらう。
+function confirmPanel(entry) {
+  return `
+    <div class="confirm">
+      <div class="confirm-title">この記録を削除します</div>
+      <p class="hint">${formatDate(entry.entry_date)}の記録です。削除すると元に戻せません。消してよければ、下の欄に「削除」と入力してください。</p>
+      <input type="text" id="confirm-text" placeholder="削除" autocomplete="off">
+      <div class="confirm-buttons">
+        <button class="cancel-btn" type="button" data-action="cancel">やめる</button>
+        <button class="danger-btn" type="button" data-action="delete" data-id="${entry.id}">削除する</button>
+      </div>
+    </div>
+  `;
+}
+
+el('list').addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-action]');
+  if (!button) return;
+
+  const { action, id } = button.dataset;
+
+  if (action === 'ask') {
+    pendingDeleteId = id;
+    render(entries);
+    el('confirm-text').focus();
+    return;
+  }
+
+  if (action === 'cancel') {
+    pendingDeleteId = null;
+    render(entries);
+    return;
+  }
+
+  if (action !== 'delete') return;
+
+  if (el('confirm-text').value.trim() !== '削除') {
+    toast('削除するには「削除」と入力してください');
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = '削除しています…';
+
+  const { error } = await supabase.from('diary_entries').delete().eq('id', id);
+
+  if (error) {
+    toast('削除できませんでした。通信を確認してもう一度お試しください');
+    button.disabled = false;
+    button.textContent = '削除する';
+    return;
+  }
+
+  pendingDeleteId = null;
+  toast('削除しました');
+  loadEntries();
+});
 
 function chip(entry) {
   if (!entry.sorted) return '<span class="chip">未整理</span>';
