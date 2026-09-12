@@ -258,15 +258,10 @@
   .mark-jun    { background: var(--jun-mark); }
   .mark-hikaru { background: var(--hikaru-mark); }
 
-  .field-label {
-    font-size: 14px;
-    font-weight: 500;
-    letter-spacing: -0.02em;
-    color: var(--slate);
-    margin-bottom: 2px;
+  .entry-note {
+    font-size: 16px;
+    line-height: 1.6;
   }
-
-  .field-text { font-size: 16px; line-height: 1.5; }
 
   .empty {
     background: var(--meadow);
@@ -540,10 +535,7 @@ function render(entries) {
         <span class="entry-date">${formatDate(e.entry_date)}</span>
         ${chip(e)}
       </div>
-      ${(e.sorted && (e.shita || e.ieta || e.oboeta)) ? '' : field('メモ', e.note)}
-      ${field('したこと', e.shita)}
-      ${field('できたこと', e.ieta)}
-      ${field('覚えたこと', e.oboeta)}
+      <div class="entry-note">${esc(e.note)}</div>
     </article>
   `).join('');
 }
@@ -555,11 +547,6 @@ function chip(entry) {
     ? `<span class="mark mark-${mark}"></span>`
     : '<span class="mark mark-jun"></span><span class="mark mark-hikaru"></span>';
   return `<span class="chip">${marks}${esc(entry.child || 'ふたり')}</span>`;
-}
-
-function field(label, text) {
-  if (!text) return '';
-  return `<div><div class="field-label">${label}</div><div class="field-text">${esc(text)}</div></div>`;
 }
 
 // ── Voice input ───────────────────────────────────────

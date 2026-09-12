@@ -1,11 +1,12 @@
-// じゅんひかDiary の未整理メモを取り出し、振り分け結果を書き戻すための道具。
+// じゅんひかDiary の未整理メモを取り出し、どの子の記録かを書き戻すための道具。
+// 本文は書き換えない。書いたままの文章を残すため、付けるのは子どものラベルだけ。
 //
 //   node scripts/diary.mjs list            未整理のメモをJSONで出す
 //   node scripts/diary.mjs apply < out.json 振り分け結果を書き戻す
 //
 // 書き戻すJSONの形:
-//   [{"id":"<メモのid>","results":[{"child":"純","shita":"","ieta":"","oboeta":""}]}]
-// results が2件あれば、2人分の記録に分けて保存する。
+//   [{"id":"<メモのid>","children":["純"]}]
+// children が2人なら、同じ本文のまま2人分の記録に分ける。
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -82,29 +83,29 @@ async function apply(token) {
   let added = 0;
 
   for (const item of payload) {
-    const results = Array.isArray(item.results) ? item.results : [];
-    if (!item.id || results.length === 0) continue;
+    const children = Array.isArray(item.children) ? item.children : [];
+    if (!item.id || children.length === 0) continue;
 
-    const [first, ...rest_] = results;
+    const [first, ...others] = children;
     await rest(token, `diary_entries?id=eq.${encodeURIComponent(item.id)}`, {
       method: 'PATCH',
-      body: JSON.stringify({ ...fields(first), sorted: true })
+      body: JSON.stringify({ child: first, sorted: true })
     });
     updated++;
 
-    if (rest_.length === 0) continue;
+    if (others.length === 0) continue;
 
     const [original] = await rest(token,
       `diary_entries?id=eq.${encodeURIComponent(item.id)}&select=entry_date,note`);
 
-    for (const extra of rest_) {
+    for (const child of others) {
       await rest(token, 'diary_entries', {
         method: 'POST',
         body: JSON.stringify({
           entry_date: original.entry_date,
           note: original.note,
-          sorted: true,
-          ...fields(extra)
+          child,
+          sorted: true
         })
       });
       added++;
@@ -112,15 +113,6 @@ async function apply(token) {
   }
 
   console.log(`${updated}件を整理しました${added ? `（${added}件を別の子の記録として追加）` : ''}`);
-}
-
-function fields(result) {
-  return {
-    child: result.child ?? 'ふたり',
-    shita: result.shita ?? '',
-    ieta: result.ieta ?? '',
-    oboeta: result.oboeta ?? ''
-  };
 }
 
 function fail(message) {

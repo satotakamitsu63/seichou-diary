@@ -1,7 +1,8 @@
 # じゅんひかDiary
 
 純と光の成長記録。スマホのブラウザで開いて、思いついたまま書いて残す。
-したこと・できたこと・覚えたことへの振り分けは、あとで Claude Code からまとめて行う。
+**書いた文章は書き換えない。** 一覧にはそのまま全文が出る。
+あとで Claude Code から、どの子の記録かのラベルだけをまとめて付ける。
 
 - 公開URL: GitHub Pages（リポジトリ設定の Pages を `main` ブランチのルートにする）
 - データの置き場所: Supabase `diary_entries` テーブル
@@ -21,7 +22,7 @@
 node scripts/diary.mjs list
 ```
 
-出てきたメモをClaudeが読んで、次の形のJSONにして書き戻す:
+出てきたメモをClaudeが読んで、どの子の記録かを決め、次の形のJSONで書き戻す:
 
 ```
 node scripts/diary.mjs apply < out.json
@@ -29,17 +30,13 @@ node scripts/diary.mjs apply < out.json
 
 ```json
 [
-  {
-    "id": "メモのid",
-    "results": [
-      { "child": "純", "shita": "公園で砂遊びをした", "ieta": "すべり台を一人で登れた", "oboeta": "" },
-      { "child": "光", "shita": "", "ieta": "「ワンワン」と言えた", "oboeta": "" }
-    ]
-  }
+  { "id": "メモのid", "children": ["純"] },
+  { "id": "別のメモのid", "children": ["ふたり"] }
 ]
 ```
 
-`results` を2件にすると、1つのメモを2人分の記録に分けて保存する。
+`child` に入るのは `純` `光` `ふたり` のいずれか。どちらの子の話か決められないとき、
+または2人が一緒に出てくるときは `ふたり` にする。本文には手を入れない。
 
 `.env`（Gitに入れない）にログイン情報を書いておく:
 
