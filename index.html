@@ -199,18 +199,87 @@
     cursor: pointer;
   }
 
-  .diary {
-    margin-top: 24px;
+  #app {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 16px;
   }
 
-  .diary-title {
+  .tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--meadow);
+    border-radius: 1440px;
+    padding: 4px;
+  }
+
+  .tab {
+    flex: 1;
+    padding: 12px 16px;
+    border: none;
+    border-radius: 1440px;
+    background: transparent;
+    font-family: var(--sans);
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    color: var(--slate);
+    cursor: pointer;
+  }
+
+  .tab[aria-selected="true"] {
+    background: var(--ink);
+    color: #fff;
+  }
+
+  #panel-diary {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .filters {
+    display: flex;
+    gap: 8px;
+  }
+
+  .filter {
+    padding: 8px 18px;
+    border: 1px solid var(--line);
+    border-radius: 1440px;
+    background: transparent;
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  .filter[aria-pressed="true"] {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: #fff;
+  }
+
+  #list {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .day {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .day-title {
     font-family: var(--serif);
-    font-size: 22px;
-    font-weight: 400;
-    letter-spacing: -0.22px;
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: -0.19px;
+    padding-left: 4px;
   }
 
   .entry {
@@ -227,13 +296,6 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-  }
-
-  .entry-date {
-    font-size: 14px;
-    font-weight: 500;
-    letter-spacing: -0.02em;
-    color: var(--slate);
   }
 
   .chip {
@@ -265,7 +327,6 @@
   }
 
   .delete-btn {
-    align-self: flex-start;
     background: none;
     border: none;
     padding: 4px 0;
@@ -388,25 +449,37 @@
 </form>
 
 <main id="app" hidden>
-  <div class="card">
-    <div class="card-header">できごと</div>
-    <p class="hint">思いついたまま書いて残してください。日付を変えれば、過去の日の分も登録できます。したこと・できたこと・覚えたことへの振り分けは、あとでまとめて整理します。</p>
-    <label class="date-row">
-      <span class="label-text">日付</span>
-      <input type="date" id="entry-date">
-    </label>
-    <div class="input-row">
-      <textarea id="note" placeholder="例：純と公園に行って砂遊び。すべり台を一人で登れた。帰り道で光が犬を見て「ワンワン」と言えた。"></textarea>
-      <button class="mic-btn" id="mic" type="button" title="音声で入力する">🎤</button>
-    </div>
-    <button class="primary-btn" id="save" type="button">記録する</button>
+  <div class="tabs" role="tablist">
+    <button class="tab" id="tab-write" type="button" role="tab" aria-selected="true">記録する</button>
+    <button class="tab" id="tab-diary" type="button" role="tab" aria-selected="false">日記を読む</button>
   </div>
 
-  <section class="diary">
-    <h2 class="diary-title">これまでの記録</h2>
-    <div id="list"><div class="empty">読み込んでいます…</div></div>
-    <button class="text-btn" id="logout" type="button">ログアウト</button>
+  <section id="panel-write">
+    <div class="card">
+      <div class="card-header">できごと</div>
+      <p class="hint">思いついたまま書いて残してください。日付を変えれば、過去の日の分も登録できます。</p>
+      <label class="date-row">
+        <span class="label-text">日付</span>
+        <input type="date" id="entry-date">
+      </label>
+      <div class="input-row">
+        <textarea id="note" placeholder="例：純と公園に行って砂遊び。すべり台を一人で登れた。帰り道で光が犬を見て「ワンワン」と言えた。"></textarea>
+        <button class="mic-btn" id="mic" type="button" title="音声で入力する">🎤</button>
+      </div>
+      <button class="primary-btn" id="save" type="button">記録する</button>
+    </div>
   </section>
+
+  <section id="panel-diary" hidden>
+    <div class="filters" role="group" aria-label="子どもで絞り込む">
+      <button class="filter" type="button" data-child="すべて" aria-pressed="true">すべて</button>
+      <button class="filter" type="button" data-child="純" aria-pressed="false">純</button>
+      <button class="filter" type="button" data-child="光" aria-pressed="false">光</button>
+    </div>
+    <div id="list"><div class="empty">読み込んでいます…</div></div>
+  </section>
+
+  <button class="text-btn" id="logout" type="button">ログアウト</button>
 </main>
 
 <div class="toast" id="toast" role="status"></div>
@@ -426,6 +499,7 @@ let recognition = null;
 let signingUp = false;
 let entries = [];
 let pendingDeleteId = null;
+let childFilter = 'すべて';
 
 // ── Session ───────────────────────────────────────────
 el('meta').textContent = new Date().toLocaleDateString('ja-JP',
@@ -458,7 +532,6 @@ async function showScreen(session) {
   el('login').hidden = true;
   el('join').hidden = member;
   el('app').hidden = !member;
-  if (member) loadEntries();
 }
 
 el('mode-toggle').addEventListener('click', () => {
@@ -530,6 +603,31 @@ el('logout').addEventListener('click', async () => {
   el('list').innerHTML = '';
 });
 
+// ── Tabs ──────────────────────────────────────────────
+el('tab-write').addEventListener('click', () => showTab('write'));
+el('tab-diary').addEventListener('click', () => showTab('diary'));
+
+function showTab(name) {
+  const diary = name === 'diary';
+  el('tab-write').setAttribute('aria-selected', String(!diary));
+  el('tab-diary').setAttribute('aria-selected', String(diary));
+  el('panel-write').hidden = diary;
+  el('panel-diary').hidden = !diary;
+  window.scrollTo(0, 0);
+  if (diary) loadEntries();
+}
+
+el('panel-diary').querySelectorAll('.filter').forEach((button) => {
+  button.addEventListener('click', () => {
+    childFilter = button.dataset.child;
+    el('panel-diary').querySelectorAll('.filter').forEach((other) => {
+      other.setAttribute('aria-pressed', String(other === button));
+    });
+    pendingDeleteId = null;
+    render(entries);
+  });
+});
+
 // ── Save ──────────────────────────────────────────────
 el('save').addEventListener('click', async () => {
   const note = el('note').value.trim();
@@ -556,7 +654,6 @@ el('save').addEventListener('click', async () => {
   } else {
     el('note').value = '';
     toast(entryDate === todayKey() ? '記録しました' : `${formatDate(entryDate)}の記録を保存しました`);
-    loadEntries();
   }
 
   btn.disabled = false;
@@ -581,29 +678,56 @@ async function loadEntries() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && !el('app').hidden) loadEntries();
+  if (!document.hidden && !el('panel-diary').hidden) loadEntries();
 });
 
 function render(rows) {
   entries = rows;
+  const shown = entries.filter(matches);
 
-  if (entries.length === 0) {
-    el('list').innerHTML = '<div class="empty">まだ記録がありません。今日のできごとから書いてみてください</div>';
+  if (shown.length === 0) {
+    el('list').innerHTML = `<div class="empty">${childFilter === 'すべて'
+      ? 'まだ記録がありません。「記録する」から書いてみてください'
+      : `${childFilter}の記録はまだありません`}</div>`;
     return;
   }
 
-  el('list').innerHTML = entries.map((e) => `
+  el('list').innerHTML = groupByDay(shown).map((day) => `
+    <section class="day">
+      <h3 class="day-title">${formatDay(day.date)}</h3>
+      ${day.items.map(entryCard).join('')}
+    </section>
+  `).join('');
+}
+
+// 「ふたり」の記録は、どちらの子で絞り込んでも出す。
+function matches(entry) {
+  if (childFilter === 'すべて') return true;
+  return entry.child === childFilter || entry.child === 'ふたり';
+}
+
+function groupByDay(rows) {
+  const days = [];
+  for (const entry of rows) {
+    const current = days[days.length - 1];
+    if (current && current.date === entry.entry_date) current.items.push(entry);
+    else days.push({ date: entry.entry_date, items: [entry] });
+  }
+  return days;
+}
+
+function entryCard(entry) {
+  const deleting = entry.id === pendingDeleteId;
+  return `
     <article class="entry">
       <div class="entry-head">
-        <span class="entry-date">${formatDate(e.entry_date)}</span>
-        ${chip(e)}
+        ${chip(entry)}
+        ${deleting ? '' : `<button class="delete-btn" type="button" data-action="ask" data-id="${entry.id}">削除</button>`}
       </div>
-      <div class="entry-note">${esc(e.note)}</div>
-      ${e.id === pendingDeleteId ? confirmPanel(e) : `
-        <button class="delete-btn" type="button" data-action="ask" data-id="${e.id}">削除</button>
-      `}
+      <div class="entry-note">${esc(entry.note)}</div>
+      ${deleting ? confirmPanel(entry) : ''}
     </article>
-  `).join('');
+  `;
 }
 
 // 消えた記録は戻らないので、本文を見せたうえで「削除」と打ってもらう。
@@ -721,6 +845,14 @@ el('mic').addEventListener('click', () => {
 // ── Helpers ───────────────────────────────────────────
 function todayKey() {
   return new Date().toLocaleDateString('sv-SE');
+}
+
+function formatDay(dateStr) {
+  const date = new Date(dateStr + 'T00:00:00');
+  const thisYear = date.getFullYear() === new Date().getFullYear();
+  return date.toLocaleDateString('ja-JP', thisYear
+    ? { month: 'long', day: 'numeric', weekday: 'short' }
+    : { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
 }
 
 function formatDate(dateStr) {
