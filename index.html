@@ -169,6 +169,62 @@
     50%      { box-shadow: 0 0 0 8px rgba(19, 14, 48, 0); }
   }
 
+  .attach-btn {
+    width: 100%;
+    padding: 14px 24px;
+    border: 1px solid var(--line);
+    border-radius: 1440px;
+    background: transparent;
+    font-family: var(--sans);
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  .attached {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .attached-preview img,
+  .attached-preview video {
+    width: 100%;
+    max-height: 260px;
+    object-fit: cover;
+    border-radius: 24px;
+    display: block;
+    background: var(--charcoal);
+  }
+
+  .attached-info {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .attached-name {
+    font-size: 14px;
+    letter-spacing: -0.02em;
+    color: var(--slate);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .attached-info .text-btn { align-self: auto; flex-shrink: 0; }
+
+  .entry-media img,
+  .entry-media video {
+    width: 100%;
+    border-radius: 16px;
+    display: block;
+    background: var(--charcoal);
+  }
+
   .primary-btn {
     width: 100%;
     padding: 16px 24px;
@@ -466,6 +522,17 @@
         <textarea id="note" placeholder="例：純と公園に行って砂遊び。すべり台を一人で登れた。帰り道で光が犬を見て「ワンワン」と言えた。"></textarea>
         <button class="mic-btn" id="mic" type="button" title="音声で入力する">🎤</button>
       </div>
+
+      <input type="file" id="media" accept="image/*,video/*" hidden>
+      <button class="attach-btn" id="attach" type="button">写真・動画を選ぶ</button>
+      <div class="attached" id="attached" hidden>
+        <div class="attached-preview" id="attached-preview"></div>
+        <div class="attached-info">
+          <span class="attached-name" id="attached-name"></span>
+          <button class="text-btn" id="attached-remove" type="button">取り消す</button>
+        </div>
+      </div>
+
       <button class="primary-btn" id="save" type="button">記録する</button>
     </div>
   </section>
@@ -500,6 +567,10 @@ let signingUp = false;
 let entries = [];
 let pendingDeleteId = null;
 let childFilter = 'すべて';
+let attachment = null;
+
+const BUCKET = 'diary-media';
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 // ── Session ───────────────────────────────────────────
 el('meta').textContent = new Date().toLocaleDateString('ja-JP',
@@ -643,22 +714,53 @@ el('save').addEventListener('click', async () => {
   btn.textContent = '保存しています…';
 
   const entryDate = el('entry-date').value || todayKey();
+  let media = null;
+
+  if (attachment) {
+    btn.textContent = attachment.kind === 'video' ? '動画を送っています…' : '写真を送っています…';
+    media = await uploadAttachment();
+
+    if (!media) {
+      toast('添付を送れませんでした。通信を確認してもう一度お試しください');
+      btn.disabled = false;
+      btn.textContent = '記録する';
+      return;
+    }
+    btn.textContent = '保存しています…';
+  }
 
   const { error } = await supabase.from('diary_entries').insert({
     entry_date: entryDate,
-    note
+    note,
+    media_path: media?.path ?? null,
+    media_type: media?.kind ?? null
   });
 
   if (error) {
     toast('保存できませんでした。通信を確認してもう一度お試しください');
   } else {
     el('note').value = '';
+    attachment = null;
+    showAttachment();
     toast(entryDate === todayKey() ? '記録しました' : `${formatDate(entryDate)}の記録を保存しました`);
   }
 
   btn.disabled = false;
   btn.textContent = '記録する';
 });
+
+async function uploadAttachment() {
+  const extension = attachment.kind === 'video'
+    ? (attachment.file.type === 'video/quicktime' ? 'mov' : 'mp4')
+    : 'jpg';
+  const path = `${crypto.randomUUID()}.${extension}`;
+
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, attachment.file, { contentType: attachment.file.type || 'image/jpeg' });
+
+  return error ? null : { path, kind: attachment.kind };
+}
 
 // ── List ──────────────────────────────────────────────
 async function loadEntries() {
@@ -674,7 +776,22 @@ async function loadEntries() {
     return;
   }
 
-  render(data ?? []);
+  const rows = data ?? [];
+  await attachMediaUrls(rows);
+  render(rows);
+}
+
+// バケットは非公開なので、表示のたびに期限付きのURLを作る。
+async function attachMediaUrls(rows) {
+  const paths = rows.filter((row) => row.media_path).map((row) => row.media_path);
+  if (paths.length === 0) return;
+
+  const { data } = await supabase.storage.from(BUCKET).createSignedUrls(paths, 3600);
+  const urls = new Map((data ?? []).map((item) => [item.path, item.signedUrl]));
+
+  for (const row of rows) {
+    if (row.media_path) row.mediaUrl = urls.get(row.media_path) ?? null;
+  }
 }
 
 document.addEventListener('visibilitychange', () => {
@@ -725,6 +842,7 @@ function entryCard(entry) {
         ${deleting ? '' : `<button class="delete-btn" type="button" data-action="ask" data-id="${entry.id}">削除</button>`}
       </div>
       <div class="entry-note">${esc(entry.note)}</div>
+      ${mediaTag(entry)}
       ${deleting ? confirmPanel(entry) : ''}
     </article>
   `;
@@ -774,6 +892,11 @@ el('list').addEventListener('click', async (event) => {
   button.disabled = true;
   button.textContent = '削除しています…';
 
+  const target = entries.find((entry) => entry.id === id);
+  if (target?.media_path) {
+    await supabase.storage.from(BUCKET).remove([target.media_path]);
+  }
+
   const { error } = await supabase.from('diary_entries').delete().eq('id', id);
 
   if (error) {
@@ -788,6 +911,15 @@ el('list').addEventListener('click', async (event) => {
   loadEntries();
 });
 
+function mediaTag(entry) {
+  if (!entry.media_path) return '';
+  if (!entry.mediaUrl) return '<div class="hint">写真を読み込めませんでした</div>';
+
+  return entry.media_type === 'video'
+    ? `<div class="entry-media"><video src="${esc(entry.mediaUrl)}" controls preload="metadata"></video></div>`
+    : `<div class="entry-media"><img src="${esc(entry.mediaUrl)}" alt="" loading="lazy"></div>`;
+}
+
 function chip(entry) {
   if (!entry.sorted) return '<span class="chip">未整理</span>';
   const mark = CHILD_MARK[entry.child];
@@ -795,6 +927,77 @@ function chip(entry) {
     ? `<span class="mark mark-${mark}"></span>`
     : '<span class="mark mark-jun"></span><span class="mark mark-hikaru"></span>';
   return `<span class="chip">${marks}${esc(entry.child || 'ふたり')}</span>`;
+}
+
+// ── Attachment ────────────────────────────────────────
+el('attach').addEventListener('click', () => el('media').click());
+
+el('media').addEventListener('change', async () => {
+  const file = el('media').files[0];
+  el('media').value = '';
+  if (!file) return;
+
+  const kind = file.type.startsWith('video/') ? 'video' : 'image';
+  const upload = kind === 'image' ? await shrinkImage(file) : file;
+
+  if (upload.size > MAX_UPLOAD_BYTES) {
+    toast('50MBを超えるので添付できません。短く撮り直すか写真にしてください');
+    return;
+  }
+
+  attachment = { file: upload, kind, name: file.name };
+  showAttachment();
+});
+
+el('attached-remove').addEventListener('click', () => {
+  attachment = null;
+  showAttachment();
+});
+
+function showAttachment() {
+  const box = el('attached');
+  const preview = el('attached-preview');
+  preview.replaceChildren();
+
+  if (!attachment) {
+    box.hidden = true;
+    el('attach').textContent = '写真・動画を選ぶ';
+    return;
+  }
+
+  const media = document.createElement(attachment.kind === 'video' ? 'video' : 'img');
+  media.src = URL.createObjectURL(attachment.file);
+  if (attachment.kind === 'video') media.controls = true;
+  preview.append(media);
+
+  el('attached-name').textContent = `${attachment.name}（${fileSize(attachment.file.size)}）`;
+  box.hidden = false;
+  el('attach').textContent = '別のものに変える';
+}
+
+function fileSize(bytes) {
+  return bytes < 1024 * 1024
+    ? `${Math.max(1, Math.round(bytes / 1024))}KB`
+    : `${Math.round(bytes / 1024 / 1024 * 10) / 10}MB`;
+}
+
+// 写真はそのままだと1枚数MBになるので、長辺1600pxに縮めてから送る。
+// 変換できないときは元のまま送る。
+async function shrinkImage(file) {
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+    return blob && blob.size < file.size ? blob : file;
+  } catch {
+    return file;
+  }
 }
 
 // ── Voice input ───────────────────────────────────────

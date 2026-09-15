@@ -6,6 +6,8 @@
 
 - 公開URL: GitHub Pages（リポジトリ設定の Pages を `main` ブランチのルートにする）
 - データの置き場所: Supabase `diary_entries` テーブル
+- 写真・動画: Supabase Storage の非公開バケット `diary-media`（1件につき1つ、50MBまで）。
+  表示のたびに期限付きURLを作るので、リンクを知られても他人には見えない
 - 読み書きできる人: `diary_members` テーブルに載っているメールアドレスの人だけ
 
 ## 準備（一度だけ）
