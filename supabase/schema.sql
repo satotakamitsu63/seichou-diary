@@ -100,3 +100,28 @@ $$;
 
 revoke all on function public.join_diary(text) from public, anon;
 grant execute on function public.join_diary(text) to authenticated;
+
+-- 写真・動画。記録1件につき1つまで。実体はStorageに置き、ここには置き場所と種類だけを持つ。
+alter table public.diary_entries add column if not exists media_path text;
+alter table public.diary_entries add column if not exists media_type text
+  check (media_type in ('image', 'video'));
+
+-- 非公開のバケット。URLを知られても中身は見られない（署名付きURLでのみ表示する）。
+-- 1ファイル50MBまで。長い動画は入らないので、アプリ側で先に知らせる。
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'diary-media',
+  'diary-media',
+  false,
+  52428800,
+  array['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'video/mp4', 'video/quicktime']
+)
+on conflict (id) do update
+set file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists diary_media_all on storage.objects;
+create policy diary_media_all on storage.objects
+  for all to authenticated
+  using (bucket_id = 'diary-media' and public.is_diary_member())
+  with check (bucket_id = 'diary-media' and public.is_diary_member());
