@@ -7,7 +7,7 @@
 - 公開URL: GitHub Pages（リポジトリ設定の Pages を `main` ブランチのルートにする）
 - データの置き場所: Supabase `diary_entries` テーブル
 - 写真・動画: Supabase Storage の非公開バケット `diary-media`（1件につき1つ、50MBまで）。
-  表示のたびに期限付きURLを作るので、リンクを知られても他人には見えない
+  表示には期限付きURLを使う。有効期限内はURLを知っている人が閲覧できる
 - 読み書きできる人: `diary_members` テーブルに載っているメールアドレスの人だけ
 
 ## 準備（一度だけ）
@@ -46,3 +46,8 @@ node scripts/diary.mjs apply < out.json
 DIARY_EMAIL=...
 DIARY_PASSWORD=...
 ```
+
+## Googleドライブへの切り替え準備
+
+連携コードは追加済みですが、まだ有効化していません。公開版は従来のSupabaseです。
+設定と未完了の検証は [Googleドライブ設定手順](docs/google-drive-setup.md) を参照してください。

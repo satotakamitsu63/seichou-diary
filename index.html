@@ -554,10 +554,16 @@
 <script type="module">
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/+esm';
 
+import { MEDIA_PROVIDER } from './media-config.js';
+import { createDriveClient } from './drive-client.js';
+
 const SUPABASE_URL = 'https://qkjvdtnjakfqrzgwzexx.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_C1CB_8T0U-oaZmfRDqr6Xw_Qb-h9cgm';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const drive = createDriveClient(supabase, `${SUPABASE_URL}/functions/v1/drive-media`, SUPABASE_ANON_KEY);
+const driveObjectUrls = new Map();
 
 const el = (id) => document.getElementById(id);
 const CHILD_MARK = { '純': 'jun', '光': 'hikaru' };
@@ -568,6 +574,7 @@ let entries = [];
 let pendingDeleteId = null;
 let childFilter = 'すべて';
 let attachment = null;
+let mediaObserver = null;
 
 const BUCKET = 'diary-media';
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
@@ -593,6 +600,9 @@ async function isMember() {
 
 async function showScreen(session) {
   if (!session) {
+    clearDriveMedia();
+    entries = [];
+    el('list').replaceChildren();
     el('login').hidden = false;
     el('join').hidden = true;
     el('app').hidden = true;
@@ -716,40 +726,50 @@ el('save').addEventListener('click', async () => {
   const entryDate = el('entry-date').value || todayKey();
   let media = null;
 
-  if (attachment) {
-    btn.textContent = attachment.kind === 'video' ? '動画を送っています…' : '写真を送っています…';
-    media = await uploadAttachment();
+  try {
+    if (attachment) {
+      btn.textContent = attachment.kind === 'video' ? '動画を送っています…' : '写真を送っています…';
+      media = await uploadAttachment();
 
-    if (!media) {
-      toast('添付を送れませんでした。通信を確認してもう一度お試しください');
-      btn.disabled = false;
-      btn.textContent = '記録する';
-      return;
+      if (!media) {
+        toast('添付を送れませんでした。通信を確認してもう一度お試しください');
+        btn.disabled = false;
+        btn.textContent = '記録する';
+        return;
+      }
+      btn.textContent = '保存しています…';
     }
-    btn.textContent = '保存しています…';
+
+    const { error } = await supabase.from('diary_entries').insert({
+      entry_date: entryDate,
+      note,
+      media_path: media?.path ?? null,
+      media_type: media?.kind ?? null
+    });
+
+    if (error) {
+      toast('保存できませんでした。通信を確認してもう一度お試しください');
+    } else {
+      el('note').value = '';
+      attachment = null;
+      showAttachment();
+      toast(entryDate === todayKey() ? '記録しました' : `${formatDate(entryDate)}の記録を保存しました`);
+    }
+
+  } catch (error) {
+    toast(error.message || '保存できませんでした。再度お試しください');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '記録する';
   }
-
-  const { error } = await supabase.from('diary_entries').insert({
-    entry_date: entryDate,
-    note,
-    media_path: media?.path ?? null,
-    media_type: media?.kind ?? null
-  });
-
-  if (error) {
-    toast('保存できませんでした。通信を確認してもう一度お試しください');
-  } else {
-    el('note').value = '';
-    attachment = null;
-    showAttachment();
-    toast(entryDate === todayKey() ? '記録しました' : `${formatDate(entryDate)}の記録を保存しました`);
-  }
-
-  btn.disabled = false;
-  btn.textContent = '記録する';
 });
 
 async function uploadAttachment() {
+  if (attachment.uploaded) return attachment.uploaded;
+  if (MEDIA_PROVIDER === 'google-drive') {
+    attachment.uploaded = await drive.upload(attachment);
+    return attachment.uploaded;
+  }
   const extension = attachment.kind === 'video'
     ? (attachment.file.type === 'video/quicktime' ? 'mov' : 'mp4')
     : 'jpg';
@@ -783,14 +803,14 @@ async function loadEntries() {
 
 // バケットは非公開なので、表示のたびに期限付きのURLを作る。
 async function attachMediaUrls(rows) {
-  const paths = rows.filter((row) => row.media_path).map((row) => row.media_path);
+  const paths = rows.filter((row) => row.media_path && !row.media_path.startsWith('drive:')).map((row) => row.media_path);
   if (paths.length === 0) return;
 
   const { data } = await supabase.storage.from(BUCKET).createSignedUrls(paths, 3600);
   const urls = new Map((data ?? []).map((item) => [item.path, item.signedUrl]));
 
   for (const row of rows) {
-    if (row.media_path) row.mediaUrl = urls.get(row.media_path) ?? null;
+    if (row.media_path && !row.media_path.startsWith('drive:')) row.mediaUrl = urls.get(row.media_path) ?? null;
   }
 }
 
@@ -799,6 +819,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function render(rows) {
+  mediaObserver?.disconnect();
   entries = rows;
   const shown = entries.filter(matches);
 
@@ -815,6 +836,15 @@ function render(rows) {
       ${day.items.map(entryCard).join('')}
     </section>
   `).join('');
+  mediaObserver = new IntersectionObserver(items => {
+    for (const item of items) {
+      if (!item.isIntersecting) continue;
+      mediaObserver.unobserve(item.target);
+      const entry = entries.find(row => row.id === item.target.dataset.id);
+      if (entry?.media_type === 'image') displayDriveMedia(item.target, entry);
+    }
+  });
+  el('list').querySelectorAll('[data-action="load-media"]').forEach(button => mediaObserver.observe(button));
 }
 
 // 「ふたり」の記録は、どちらの子で絞り込んでも出す。
@@ -869,6 +899,11 @@ el('list').addEventListener('click', async (event) => {
 
   const { action, id } = button.dataset;
 
+  if (action === 'load-media') {
+    await displayDriveMedia(button, entries.find(entry => entry.id === id));
+    return;
+  }
+
   if (action === 'ask') {
     pendingDeleteId = id;
     render(entries);
@@ -892,11 +927,6 @@ el('list').addEventListener('click', async (event) => {
   button.disabled = true;
   button.textContent = '削除しています…';
 
-  const target = entries.find((entry) => entry.id === id);
-  if (target?.media_path) {
-    await supabase.storage.from(BUCKET).remove([target.media_path]);
-  }
-
   const { error } = await supabase.from('diary_entries').delete().eq('id', id);
 
   if (error) {
@@ -906,13 +936,46 @@ el('list').addEventListener('click', async (event) => {
     return;
   }
 
+  // Keep attachment files for recovery; deleting the record must not destroy media first.
   pendingDeleteId = null;
-  toast('削除しました');
+  toast('記録を削除しました。添付ファイルは保存先に残しています');
   loadEntries();
 });
 
+async function displayDriveMedia(button, entry) {
+  if (!entry) return;
+  button.disabled = true;
+  button.textContent = '読み込んでいます…';
+  try {
+    let url = driveObjectUrls.get(entry.media_path);
+    if (!url) {
+      url = await drive.read(entry.media_path);
+      if (el('app').hidden || !button.isConnected) { URL.revokeObjectURL(url); return; }
+      driveObjectUrls.set(entry.media_path, url);
+    }
+    const media = document.createElement(entry.media_type === 'video' ? 'video' : 'img');
+    media.src = url;
+    if (entry.media_type === 'video') { media.controls = true; media.playsInline = true; }
+    else media.alt = '日記に添付した写真';
+    button.replaceWith(media);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = '再読み込み';
+    toast(error.message);
+  }
+}
+
+function clearDriveMedia() {
+  mediaObserver?.disconnect();
+  for (const url of driveObjectUrls.values()) URL.revokeObjectURL(url);
+  driveObjectUrls.clear();
+}
+
 function mediaTag(entry) {
   if (!entry.media_path) return '';
+  if (entry.media_path.startsWith('drive:')) {
+    return `<div class="entry-media" data-drive-id="${entry.id}"><button type="button" class="attach-btn" data-action="load-media" data-id="${entry.id}">${entry.media_type === 'video' ? '動画' : '写真'}を表示</button></div>`;
+  }
   if (!entry.mediaUrl) return '<div class="hint">写真を読み込めませんでした</div>';
 
   return entry.media_type === 'video'
