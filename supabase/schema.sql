@@ -69,9 +69,9 @@ create table if not exists public.diary_invite (
 -- ポリシーを作らないので、誰も直接は読めない。下の関数の中だけで参照される。
 alter table public.diary_invite enable row level security;
 
-insert into public.diary_invite (code)
-values ('JUNHIKA')
-on conflict (code) do nothing;
+-- 合言葉は2人の登録が済んだ2026-09-18に無効化した。
+-- 家族を増やすときだけ、下の行の合言葉を決めて実行する。
+-- insert into public.diary_invite (code) values ('ここに合言葉') on conflict (code) do nothing;
 
 create or replace function public.join_diary(invite_code text)
 returns boolean
