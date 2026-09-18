@@ -1,3 +1,24 @@
+# Google Drive integration — 稼働中（2026-09-18 切り替え済み）
+
+## 現状
+
+保存先はGoogleドライブ。`media-config.js` は `google-drive`。Edge Function `drive-media` は
+デプロイ済みで、秘密情報6項目も設定済み。OAuthアプリは本番公開に切り替えたので、
+リフレッシュトークンの7日失効はもう起きない。
+
+- Driveの保存先フォルダ: じゅんひかDiary（`1WIcYq2QOx8LP2k9M8UZWhI9rUtzpg46p`、共有なし・先生の所有）
+- 通し確認済み: 写真200KB・動画1.5MBを上げて取り出し、バイト一致。別ページを名乗った要求は403
+- 既存の添付1件は `scripts/migrate-media-to-drive.mjs` でDriveへ移行済み（844842バイト一致）。
+  元のSupabase Storageのファイルは復旧用に残してある
+- 合言葉は無効化済み（`diary_invite` は空）
+
+戻すときは `media-config.js` を `supabase` に戻す。移行済みの `drive:` 添付を読むには
+Edge FunctionとGoogleの連携を残しておく必要がある。
+
+---
+
+以下は切り替え前に書かれた準備手順（記録として残す）。
+
 # Google Drive integration — prepared, not activated
 
 Owner: ragubiiiii@gmail.com. Keep MEDIA_PROVIDER='supabase' until end-to-end checks pass.
